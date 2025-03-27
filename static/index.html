@@ -1,1 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhishForge with Ollama - Attack Simulation Template Generator</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .preview-panel { 
+            border: 1px solid #ddd; 
+            padding: 15px; 
+            border-radius: 5px; 
+            margin-top: 20px;
+        }
+        pre { 
+            background-color: #f8f9fa; 
+            padding: 15px; 
+            border-radius: 5px; 
+            white-space: pre-wrap; 
+            max-height: 400px; 
+            overflow-y: auto;
+        }
+        .sender-line { 
+            border-bottom: 1px solid #eee; 
+            padding-bottom: 10px; 
+            margin-bottom: 10px; 
+        }
+        .ollama-status {
+            position: fixed;
+            bottom: 15px;
+            right: 15px;
+            z-index: 1000;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-running { background-color: #28a745; }
+        .status-not-running { background-color: #dc3545; }
+        .toast-container {
+            position: fixed;
+            bottom: 15px;
+            left: 15px;
+            z-index: 1000;
+        }
+        .toast {
+            min-width: 250px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1 class="mb-0">PhishForge</h1>
+                <p class="lead">Generate Microsoft Attack Simulation Templates with Ollama</p>
+            </div>
+            <div id="ollama-model-selector" style="display: none;">
+                <label for="model-select" class="form-label">Ollama Model:</label>
+                <select id="model-select" class="form-select form-select-sm" style="width: 150px;"></select>
+            </div>
+        </div>
 
+        <div class="row">
+            <!-- Form Column -->
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h2 class="h5 mb-0">Template Configuration</h2>
+                    </div>
+                    <div class="card-body">
+                        <form id="template-form">
+                            <div class="mb-3">
+                                <label for="name" class="form-label">Simulation Name:</label>
+                                <input type="text" class="form-control" id="name" name="name" required>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="attack_technique" class="form-label">Attack Technique:</label>
+                                    <select class="form-select" id="attack_technique" name="attack_technique">
+                                        <option value="credentialHarvesting">Credential Harvesting</option>
+                                        <option value="malwareAttachment">Malware Attachment</option>
+                                        <option value="linkInAttachment">Link in Attachment</option>
+                                        <option value="driveByUrl">Drive By URL</option>
+                                        <option value="oauth">OAuth Phishing</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="duration" class="form-label">Duration (days):</label>
+                                    <input type="number" class="form-control" id="duration" name="duration" min="1" max="30" value="7" required>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="targets" class="form-label">Target Emails (one per line):</label>
+                                <textarea class="form-control" id="targets" name="targets" rows="3" placeholder="user1@example.com&#10;user2@example.com"></textarea>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Content Type:</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="content_type" id="content_type_template" value="template" checked>
+                                    <label class="form-check-label" for="content_type_template">
+                                        Use Template
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="content_type" id="content_type_ai" value="ai_generate">
+                                    <label class="form-check-label" for="content_type_ai">
+                                        Generate with Ollama
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div id="template-selection" class="mb-3">
+                                <label for="template_id" class="form-label">Select Template:</label>
+                                <select class="form-select" id="template_id" name="template_id">
+                                    <option value="password_reset">Password Reset</option>
+                                    <option value="invoice">Invoice Payment</option>
+                                    <option value="shared_doc">Shared Document</option>
+                                </select>
+                            </div>
+
+                            <div id="ai-generation" class="mb-3" style="display: none;">
+                                <label for="scenario_description" class="form-label">Describe the phishing scenario:</label>
+                                <textarea class="form-control" id="scenario_description" name="scenario_description" rows="3" placeholder="Example: Create a password reset email that appears to come from the IT department. Include a sense of urgency."></textarea>
+                                <button type="button" id="generate-content-btn" class="btn btn-secondary mt-2">
+                                    Generate Content with Ollama
+                                </button>
+                            </div>
+
+                            <div class="d-flex justify-content-between">
+                                <button type="button" id="preview-btn" class="btn btn-secondary">Preview Email</button>
+                                <button type="submit" class="btn btn-primary">Generate Template</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Output Column -->
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h2 class="h5 mb-0">Generated Template</h2>
+                        <button id="copy-button" class="btn btn-sm btn-outline-secondary">Copy</button>
+                    </div>
+                    <div class="card-body">
+                        <pre id="template-output">Your generated template will appear here...</pre>
+                    </div>
+                    <div class="card-footer">
+                        <button id="download-btn" class="btn btn-success" disabled>Download JSON</button>
+                    </div>
+                </div>
+
+                <div id="preview-panel" class="preview-panel" style="display: none;">
+                    <h3 class="h5 mb-3">Email Preview</h3>
+                    <div class="sender-line">
+                        <div id="preview-from">Sender Name</div>
+                        <div id="preview-email" class="text-muted small">sender@example.com</div>
+                    </div>
+                    <div class="mb-3">
+                        <div id="preview-subject" class="fw-bold">Email Subject</div>
+                    </div>
+                    <div id="preview-body">
+                        Email body will appear here...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ollama Status Indicator -->
+    <div id="ollama-status" class="ollama-status bg-secondary text-white">
+        <span class="status-indicator"></span>
+        <span id="ollama-status-text">Checking Ollama status...</span>
+    </div>
+
+    <!-- Toast messages -->
+    <div class="toast-container"></div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Form elements
+            const templateForm = document.getElementById('template-form');
+            const contentTypeTemplate = document.getElementById('content_type_template');
+            const contentTypeAI = document.getElementById('content_type_ai');
+            const templateSelection = document.getElementById('template-selection');
+            const aiGeneration = document.getElementById('ai-generation');
+            const generateContentBtn = document.getElementById('generate-content-btn');
+            const previewBtn = document.getElementById('preview-btn');
+            const previewPanel = document.getElementById('preview-panel');
+            const templateOutput = document.getElementById('template-output');
+            const copyButton = document.getElementById('copy-button');
+            const downloadBtn = document.getElementById('download-btn');
+
+            // Ollama status elements
+            const ollamaStatus = document.getElementById('ollama-status');
+            const ollamaStatusText = document.getElementById('ollama-status-text');
+            const statusIndicator = document.querySelector('.status-indicator');
+            const ollamaModelSelector = document.getElementById('ollama-model-selector');
+            const modelSelect = document.getElementById('model-select');
+
+            // Preview elements
+            const previewFrom = document.getElementById('preview-from');
+            const previewEmail = document.getElementById('preview-email');
+            const previewSubject = document.getElementById('preview-subject');
+            const previewBody = document.getElementById('preview-body');
+
+            // State
+            let generatedContent = null;
+            let generatedTemplate = null;
+            let ollamaRunning = false;
+
+            // Check Ollama status on page load
+            checkOllamaStatus();
+            
+            // Set interval to check Ollama status every 30 seconds
+            setInterval(checkOllamaStatus, 30000);
+
+            // Toggle content type selection
+            contentTypeTemplate.addEventListener('change', function() {
+                if (this.checked) {
+                    templateSelection.style.display = 'block';
+                    aiGeneration.style.display = 'none';
+                }
+            });
+
+            contentTypeAI.addEventListener('change', function() {
+                if (this.checked) {
+                    if (!ollamaRunning) {
+                        showToast('Ollama is not running. Please start Ollama to use AI generation.', 'warning');
+                        contentTypeTemplate.checked = true;
+                        return;
+                    }
+                    templateSelection.style.display = 'none';
+                    aiGeneration.style.display = 'block';
+                }
+            });
+
+            // Generate content with Ollama
+            generateContentBtn.addEventListener('click', function() {
+                const scenario = document.getElementById('scenario_description').value;
+                if (!scenario) {
+                    showToast('Please describe the phishing scenario', 'warning');
+                    return;
+                }
+
+                if (!ollamaRunning) {
+                    showToast('Ollama is not running. Please start Ollama to use AI generation.', 'warning');
+                    return;
+                }
+
+                // Show loading state
+                this.disabled = true;
+                this.textContent = 'Generating...';
+                showToast('Generating content with Ollama... This may take a moment.', 'info');
+
+                // Call the API
+                fetch('/api/generate-content', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        scenario: scenario,
+                        attack_technique: document.getElementById('attack_technique').value
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    return response.json();
+                })
+                .then(content => {
+                    generatedContent = content;
+                    
+                    // Update preview
+                    previewFrom.textContent = content.sender_name;
+                    previewEmail.textContent = content.sender_email;
+                    previewSubject.textContent = content.subject;
+                    previewBody.innerHTML = content.body;
+                    
+                    // Show preview
+                    previewPanel.style.display = 'block';
+                    
+                    // Reset button
+                    this.disabled = false;
+                    this.textContent = 'Generate Content with Ollama';
+                    
+                    showToast('Content generated successfully!', 'success');
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showToast('Error generating content: ' + error.message, 'danger');
+                    this.disabled = false;
+                    this.textContent = 'Generate Content with Ollama';
+                });
+            });
+
+            // Show preview
+            previewBtn.addEventListener('click', function() {
+                updatePreview();
+                previewPanel.style.display = 'block';
+            });
+
+            // Form submission
+            templateForm.addEventListener('submit', function(event) {
+                event.preventDefault();
+                
+                // Show loading state
+                templateOutput.textContent = 'Generating template...';
+                
+                // Collect form data
+                const formData = new FormData(this);
+                const data = {};
+                formData.forEach((value, key) => {
+                    if (key === 'targets') {
+                        // Split target emails by newline and filter out empty lines
+                        data[key] = value.split('\n').filter(email => email.trim() !== '');
+                    } else {
+                        data[key] = value;
+                    }
+                });
+                
+                // Include the AI-generated content if available
+                if (generatedContent && data.content_type === 'ai_generate') {
+                    data.generated_content = generatedContent;
+                }
+
+                // Send request to the server
+                fetch('/api/generate-template', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                })
+                .then(response => {
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    return response.json();
+                })
+                .then(template => {
+                    generatedTemplate = template;
+                    templateOutput.textContent = JSON.stringify(template, null, 2);
+                    downloadBtn.disabled = false;
+                    showToast('Template generated successfully!', 'success');
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    templateOutput.textContent = 'Error generating template: ' + error.message;
+                    showToast('Error generating template: ' + error.message, 'danger');
+                });
+            });
+
+            // Download JSON
+            downloadBtn.addEventListener('click', function() {
+                if (!generatedTemplate) return;
+                
+                const blob = new Blob([JSON.stringify(generatedTemplate, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `attack-simulation-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showToast('JSON file downloaded successfully', 'success');
+            });
+
+            // Copy to clipboard
+            copyButton.addEventListener('click', function() {
+                const text = templateOutput.textContent;
+                navigator.clipboard.writeText(text).then(() => {
+                    const originalText = this.textContent;
+                    this.textContent = 'Copied!';
+                    setTimeout(() => {
+                        this.textContent = originalText;
+                    }, 2000);
+                    showToast('Template copied to clipboard', 'success');
+                });
+            });
+
+            // Model selection change
+            modelSelect.addEventListener('change', function() {
+                const model = this.value;
+                if (model) {
+                    localStorage.setItem('selectedOllamaModel', model);
+                    showToast(`Model changed to ${model}`, 'info');
+                }
+            });
+
+            // Helper function to update preview
+            function updatePreview() {
+                const contentType = document.querySelector('input[name="content_type"]:checked').value;
+                
+                if (contentType === 'template') {
+                    const templateId = document.getElementById('template_id').value;
+                    updatePreviewFromTemplate(templateId);
+                } else if (contentType === 'ai_generate' && generatedContent) {
+                    previewFrom.textContent = generatedContent.sender_name;
+                    previewEmail.textContent = generatedContent.sender_email;
+                    previewSubject.textContent = generatedContent.subject;
+                    previewBody.innerHTML = generatedContent.body;
+                } else {
+                    // Default preview
+                    previewFrom.textContent = 'Sample Sender';
+                    previewEmail.textContent = 'sample@example.com';
+                    previewSubject.textContent = 'Sample Subject';
+                    previewBody.innerHTML = '<p>Sample email body...</p>';
+                }
+            }
+
+            // Helper function to update preview from template
+            function updatePreviewFromTemplate(templateId) {
+                switch(templateId) {
+                    case 'password_reset':
+                        previewFrom.textContent = 'IT Department';
+                        previewEmail.textContent = 'it-support@company.com';
+                        previewSubject.textContent = 'Urgent: Password Reset Required';
+                        previewBody.innerHTML = `
+                            <p>Dear User,</p>
+                            <p>Our security system has detected unusual login attempts on your account. To protect your data, we have temporarily locked your account.</p>
+                            <p>Please reset your password immediately by clicking the link below:</p>
+                            <p><a href="#">[RESET PASSWORD]</a></p>
+                            <p>If you do not reset your password within 24 hours, your account may be suspended.</p>
+                            <p>Thank you,<br>IT Security Team</p>
+                        `;
+                        break;
+                    case 'invoice':
+                        previewFrom.textContent = 'Accounts Department';
+                        previewEmail.textContent = 'invoices@company.com';
+                        previewSubject.textContent = 'Invoice #INV-2023-4872 Due for Payment';
+                        previewBody.innerHTML = `
+                            <p>Hello,</p>
+                            <p>Please find attached the invoice #INV-2023-4872 for $1,249.99 due for payment by 03/30/2025.</p>
+                            <p>To view and pay this invoice online, please click here: <a href="#">[VIEW INVOICE]</a></p>
+                            <p>If you have any questions regarding this invoice, please contact our accounts team.</p>
+                            <p>Regards,<br>Accounts Department</p>
+                        `;
+                        break;
+                    case 'shared_doc':
+                        previewFrom.textContent = 'OneDrive Sharing';
+                        previewEmail.textContent = 'sharing@onedrive.com';
+                        previewSubject.textContent = 'Document Shared: Q1 Financial Report';
+                        previewBody.innerHTML = `
+                            <p>Hi there,</p>
+                            <p>John Smith (john.smith@company.com) has shared a document with you:</p>
+                            <p><strong>Q1 Financial Report.xlsx</strong></p>
+                            <p><a href="#">[VIEW DOCUMENT]</a></p>
+                            <p>This link will expire in 7 days.</p>
+                            <p>The Microsoft OneDrive Team</p>
+                        `;
+                        break;
+                }
+            }
+
+            // Function to check Ollama status
+            function checkOllamaStatus() {
+                fetch('/api/ollama-status')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'running') {
+                            ollamaRunning = true;
+                            statusIndicator.classList.remove('status-not-running');
+                            statusIndicator.classList.add('status-running');
+                            ollamaStatus.classList.remove('bg-secondary', 'bg-danger');
+                            ollamaStatus.classList.add('bg-success');
+                            ollamaStatusText.textContent = `Ollama running: ${data.current_model}`;
+                            
+                            // Update model selector
+                            if (data.models && data.models.length > 0) {
+                                ollamaModelSelector.style.display = 'block';
+                                modelSelect.innerHTML = '';
+                                
+                                // Get previously selected model from localStorage or use current
+                                const savedModel = localStorage.getItem('selectedOllamaModel') || data.current_model;
+                                
+                                data.models.forEach(model => {
+                                    const option = document.createElement('option');
+                                    option.value = model;
+                                    option.textContent = model;
+                                    option.selected = (model === savedModel);
+                                    modelSelect.appendChild(option);
+                                });
+                            }
+                        } else {
+                            ollamaRunning = false;
+                            statusIndicator.classList.remove('status-running');
+                            statusIndicator.classList.add('status-not-running');
+                            ollamaStatus.classList.remove('bg-success', 'bg-secondary');
+                            ollamaStatus.classList.add('bg-danger');
+                            ollamaStatusText.textContent = 'Ollama not running';
+                            ollamaModelSelector.style.display = 'none';
+                            
+                            // If AI content generation is selected, revert to template
+                            if (contentTypeAI.checked) {
+                                contentTypeTemplate.checked = true;
+                                templateSelection.style.display = 'block';
+                                aiGeneration.style.display = 'none';
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error checking Ollama status:', error);
+                        ollamaRunning = false;
+                        statusIndicator.classList.remove('status-running');
+                        statusIndicator.classList.add('status-not-running');
+                        ollamaStatus.classList.remove('bg-success', 'bg-secondary');
+                        ollamaStatus.classList.add('bg-danger');
+                        ollamaStatusText.textContent = 'Error checking Ollama';
+                        ollamaModelSelector.style.display = 'none';
+                    });
+            }
+
+            // Helper function to show toast messages
+            function showToast(message, type = 'info') {
+                const toastContainer = document.querySelector('.toast-container');
+                
+                const toast = document.createElement('div');
+                toast.className = `toast show bg-${type} text-white`;
+                toast.setAttribute('role', 'alert');
+                toast.setAttribute('aria-live', 'assertive');
+                toast.setAttribute('aria-atomic', 'true');
+                
+                toast.innerHTML = `
+                    <div class="toast-header bg-${type} text-white">
+                        <strong class="me-auto">PhishForge</strong>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body">
+                        ${message}
+                    </div>
+                `;
+                
+                toastContainer.appendChild(toast);
+                
+                // Auto-remove after 5 seconds
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                    setTimeout(() => {
+                        toastContainer.removeChild(toast);
+                    }, 500);
+                }, 5000);
+                
+                // Add close button functionality
+                const closeButton = toast.querySelector('.btn-close');
+                closeButton.addEventListener('click', () => {
+                    toast.classList.remove('show');
+                    setTimeout(() => {
+                        toastContainer.removeChild(toast);
+                    }, 500);
+                });
+            }
+        });
+    </script>
+</body>
+</html>
